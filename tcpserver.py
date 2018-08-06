@@ -6,20 +6,22 @@ from PyQt5.QtCore import *
 
 class TcpServer(QObject):
     MaxBufferSize = 2000
+    receivedData = pyqtSignal(list)
+
     def __init__(self):
         super().__init__()
+
+    def init(self):
         self.tcpServer = QTcpServer(self) # should have parent
         self.acceptSocket = None
         self.tcpSocketBuffer = []
-        self.sendCount = 0
-        self.sendTimer = QTimer(self)
-        self.sendTimer.timeout.connect(self.onCycleDataSending)
         if not self.tcpServer.listen(QHostAddress.AnyIPv4, 2000):
             print("listen error")
             return
         else:
             self.tcpServer.newConnection.connect(self.onNewConnection)
             print("listen successful")
+
     @pyqtSlot()
     def onNewConnection(self):
         try:
@@ -27,15 +29,13 @@ class TcpServer(QObject):
                 self.acceptSocket = self.tcpServer.nextPendingConnection()
                 self.acceptSocket.readyRead.connect(self.onReadyToRead)
                 self.acceptSocket.disconnected.connect(self.onSocketDisconnect)
-                self.sendTimer.start(1000)
                 print("new socket", self.acceptSocket)
         except Exception as e:
             print("on new connection", str(e))
     @pyqtSlot()
     def onSocketDisconnect(self):
-        socket = self.sender()
-        self.sendTimer.stop()
-        socket.deleteLater()
+        self.acceptSocket.deleteLater()
+        self.acceptSocket = None
 
     @pyqtSlot()
     def onReadyToRead(self):
@@ -51,18 +51,14 @@ class TcpServer(QObject):
             if len(self.tcpSocketBuffer) != TcpServer.MaxBufferSize:
                 print(len(self.tcpSocketBuffer))
                 return
-            time = QDateTime.currentDateTime().toString("hh:mm:ss.zzz")
-            print("Read data, size = {}:{}".
-                  format(len(self.tcpSocketBuffer), self.tcpSocketBuffer), time)
+            self.receivedData.emit(self.tcpSocketBuffer)
         except Exception as e:
             print("on Ready to read ", str(e))
 
-    def onCycleDataSending(self):
+    def onDataToSend(self, data):
+        if self.acceptSocket == None: return
         try:
-            data = bytearray()
-            for i in range(2000):
-                data.append(0xff)
-            self.acceptSocket.write(QByteArray(data))
+            self.acceptSocket.write(data)
             self.acceptSocket.waitForBytesWritten()
         except Exception as e:
             print(str(e), "onCycleDataSending")
